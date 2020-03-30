@@ -2,6 +2,7 @@ from utils import utils, tests
 from operator import itemgetter
 import math, random
 
+eps = 7./3 - 4./3 - 1
 
 class Matrix(object):
     def __init__(self, dims):
@@ -142,47 +143,6 @@ class Matrix(object):
 
         return ""
 
-    def __invert__(self):
-        matrix = Matrix.copy(self)
-        threshold = 0.0001
-        if matrix.dimensions[0] == matrix.dimensions[1]:
-            if (matrix.determinant() >= threshold):
-                for i in range(matrix.dimensions[0]):
-                    col = []
-                    for j in range(matrix.dimensions[0]):
-                        if i == j:
-                            col.append(1)
-                        else:
-                            col.append(0)
-                    matrix.add_col(matrix.dimensions[1], col)
-
-                matrix.gaussian_elimination(matrix.dimensions[0])
-
-                for i in range(matrix.dimensions[0]):
-                    if matrix.values[i][i] == 0:
-                        return None
-
-                for i in range(matrix.dimensions[0]):
-                    matrix.delete_col(0)
-
-                return matrix
-            else:
-                print('The matrix is singular.')
-                return None
-        else:
-            print("ERROR: Cannot invert a non-square matrix.")
-            return None
-
-    def __or__(v, u):
-        if v.is_vector() and u.is_vector():
-            if v.dimensions[0] == u.dimensions[0]:
-                if u.is_zero():
-                    return u
-                elif v.is_zero():
-                    return v
-                else:
-                    return u * ((v ** u) / (u ** u))
-        
     
     @staticmethod
     def is_matrix(matrix):
@@ -197,11 +157,6 @@ class Matrix(object):
                     return False
         return True
 
-    def is_invertible(self):
-        if ~self is None:
-            return False
-        else:
-            return True
 
     def is_symmetric(self):
         return self == self.transpose()
@@ -211,38 +166,6 @@ class Matrix(object):
 
     def is_square(self):
         return self.dimensions[0] == self.dimensions[1]
-
-    def is_collinear(self, vector):
-        if self.is_vector() and vector.is_vector():
-            a = Matrix.copy(self)
-            b = Matrix.copy(vector)
-
-            threshold = 0.01
-
-            for i in range(self.dimensions[0]):
-                if a.get_col(0)[i] != 0 and b.get_col(0)[i] != 0:
-                    a = a * (1 / a.get_col(0)[i])
-                    b = b * (1 / b.get_col(0)[i])
-                    for j in range(self.dimensions[0]):
-                        if (
-                            a.values[j][0] >= b.values[j][0] - threshold
-                            and a.values[j][0] <= b.values[j][0] + threshold
-                        ):
-                            pass
-                        else:
-                            return False
-                    return True
-            return False
-
-    def is_orthogonal(self, vector):
-        if self.is_vector() and vector.is_vector():
-            a = Matrix.copy(self)
-            b = Matrix.copy(vector)
-            threshold = 0.01
-            if a ** b >= -threshold and a ** b <= threshold:
-                return True
-            else:
-                return False
 
     def is_upper_triangular(self):
         if not (self.is_square()):
@@ -295,25 +218,10 @@ class Matrix(object):
 
         return m
 
-    def matrix_norm_1(self):
-        a = Matrix.copy(self)
-        sums = []
-        for j in range(a.dimensions[1]):
-            sums.append(sum(list(map((lambda x: abs(x)), (a.get_col(j))))))
-
-        return max(sums)
-
-    def matrix_norm_inf(self):
-        a = Matrix.copy(self)
-        sums = []
-        for i in range(a.dimensions[0]):
-            sums.append(sum(list(map((lambda x: abs(x)), (a.get_row(i))))))
-
-        return max(sums)
-
-    def frobenius_norm(self):
-        return math.sqrt((self.transpose() * self).trace())
-
+    def vector_norm_inf(self):
+        if self.is_vector():
+            col = [abs(x) for x in self.get_col(0)]
+            return max(col)
 
     def sort_rows(self):
         matrix = Matrix.copy(self)
@@ -333,13 +241,6 @@ class Matrix(object):
                     self.values[i][j] = 0
                 else:
                     self.values[i][j] = round(self.values[i][j], num_digits)
-        return self
-
-    def set_dimensions(self, dims):
-        self.valid = utils.check_dims(dims, "init")
-        self.dimensions = dims if self.valid else None
-        self.values = self.zeros()
-
         return self
 
     def zeros(self):
@@ -672,7 +573,7 @@ class Matrix(object):
     def find_eigenpairs(self):
         a = Matrix.copy(self)
         
-        e, s = a.qr_method(100)
+        e, s = a.qr_method(10000)
         
         eigenpairs = []
 
@@ -720,6 +621,7 @@ class Matrix(object):
 
         return f
 
+
     def qr_householder(self):
         r = Matrix.copy(self)
         eye = Matrix([r.dimensions[0], r.dimensions[1]]).identity()
@@ -744,6 +646,43 @@ class Matrix(object):
         q = Matrix.copy(q_final)
 
         return q, r
+
+    def basic_power_method(self):
+        a = Matrix.copy(self)
+        x = Matrix.build_from_cols([[1 for i in range(a.dimensions[0])]])
+        completed = False
+        
+        while not completed:
+            z = a * x
+            mult_factor_index = [abs(x) for x in z.get_col(0)].index(max([abs(x) for x in z.get_col(0)]))
+            mult_factor = z.get_col(0)[mult_factor_index]
+            z = z * (1/mult_factor)
+            if (z-x).vector_norm_inf() < eps:
+                completed = True
+            x = z
+
+        return mult_factor, z
+
+    def inverse_power_method(self):
+        a = Matrix.copy(self)
+        x = Matrix.build_from_cols([[1 for i in range(a.dimensions[0])]])
+        completed = False
+
+        if not a.is_invertible():
+            print('Inverse power method: the matrix is not invertible.')
+            return
+
+        while not completed:
+
+            z = a.inverse() * x
+            mult_factor_index = [abs(x) for x in z.get_col(0)].index(max([abs(x) for x in z.get_col(0)]))
+            mult_factor = z.get_col(0)[mult_factor_index]
+            z = z * (1/mult_factor)
+            if (z-x).vector_norm_inf() < eps:
+                completed = True
+            x = z
+        
+        return mult_factor, z
 
     def svd(self):
         m = Matrix.copy(self)
@@ -770,7 +709,11 @@ class Matrix(object):
         return u, sigma, v
 
 def main():
-    pass
+    a = Matrix.build_from_rows([[-1,3/2],[1,-1]])
+    print(a.determinant())
+    print(a.basic_power_method())
+    print(a.inverse_power_method())
+
 
 if __name__ == "__main__":
     main()

@@ -2,6 +2,9 @@ from utils import utils, tests
 from operator import itemgetter
 import math, random
 
+eps = 7./3 - 4./3 - 1
+thr = 10e-10
+
 
 class Matrix(object):
     def __init__(self, dims):
@@ -249,7 +252,7 @@ class Matrix(object):
             return False
         for i in range(self.dimensions[0]):
             for j in range(self.dimensions[1]):
-                if i > j and self.values[i][j] != 0:
+                if i > j and abs(self.values[i][j]) > thr:
                     return False
         return True
 
@@ -258,7 +261,7 @@ class Matrix(object):
             return False
         for i in range(self.dimensions[0]):
             for j in range(self.dimensions[1]):
-                if j > i and self.values[i][j] != 0:
+                if j > i and abs(self.values[i][j]) > thr:
                     return False
         return True
 
@@ -657,120 +660,78 @@ class Matrix(object):
             print("ERROR: Can not calculate the determinant of a non-square matrix.")
             return None
 
-    def qr_method(self, iterations):
+    def qr_algorithm(self):
         a = Matrix.copy(self)
-        q, r = a.qr_householder()
-        s = q
+        q = Matrix([a.dimensions[0], a.dimensions[1]]).identity()
+        q_t = Matrix([a.dimensions[0], a.dimensions[1]]).identity()
 
-        for i in range(iterations):
+        for i in range(100):
+            q,r = a.qr_householder()
             a = r * q
-            q, r = a.qr_householder()
-            s = s * q
+            q_t = q_t * q
 
-        return a, s
+        print(q_t)
+        print(a)
 
-    def find_eigenpairs(self):
-        a = Matrix.copy(self)
-        
-        e, s = a.qr_method(100)
-        
         eigenpairs = []
 
-        for i in range(e.dimensions[0]):
-            val = e.values[i][i]
-            vec = Matrix.build_from_cols([s.get_col(i)]).cleanup()
-
-            vector = vec.get_col(0)
-            vector = list(map(lambda x: abs(x), vector))
-            vector = list(filter(lambda x: x != 0, vector))
-            if len(vector) != 0:
-                vec = vec / min(vector)
-
-            vec = vec.cleanup()
-
-            if a * vec == vec * val:
-                eigenpairs.append((val, vec))
-
+        for i in range(q_t.dimensions[1]):
+            eigenpairs.append((a.values[i][i], Matrix.build_from_cols([q_t.get_col(i)])))
+        
         eigenpairs = sorted(eigenpairs, key=itemgetter(0), reverse=True)
+    
+            
 
-        return eigenpairs
+    def householder_reflection(self, iteration):
+        a = Matrix.copy(self)
+        eye = Matrix([a.dimensions[0], a.dimensions[1]]).identity()
+        c = Matrix.build_from_cols([a.get_col(iteration)])
+        e = Matrix.build_from_cols([[0 for i in range(a.dimensions[0])]])
 
+        for i in range(iteration):
+            c.values[i][0] = 0 
 
-    def householder_reflection(self):
-        x = Matrix.copy(self)
-
-        x = Matrix.build_from_cols([x.get_col(0)])
-
-        target = Matrix.copy(x)
-
-        for i in range(target.dimensions[0]):
-            if i == 0:
-                target.values[i][0] = x.v_length()
-            else:
-                target.values[i][0] = 0
-
-        i = Matrix([x.dimensions[0], x.dimensions[0]]).identity()
-
-        v = target - x
-
-        if (v.v_length() != 0):
-            f = i - (((v * v.transpose()) / (v ** v)) * 2)
+        if c.values[iteration][0] >= 0:
+            e.values[iteration][0] = 1
         else:
-            f = i - (v * v.transpose())
+            e.values[iteration][0] = -1
 
-        return f
+        v = c + (e * c.euclidean_norm())
+
+        h = eye - ((v*v.transpose())*(2/(v**v)))
+
+        return h
+
+
 
     def qr_householder(self):
-        r = Matrix.copy(self)
-        eye = Matrix([r.dimensions[0], r.dimensions[1]]).identity()
-        q_final = Matrix.copy(eye)
+        a = Matrix.copy(self)
+        r = Matrix.copy(a)
+        eye = Matrix([a.dimensions[0], a.dimensions[1]]).identity()
+        q = Matrix([a.dimensions[0], a.dimensions[1]]).identity()
+    
+        for i in range(a.dimensions[1]):
+            h = r.householder_reflection(i)
+            q = q * h
+            r = h * r
+    
+        if q*q.transpose() == eye and r.is_upper_triangular():      
+            return q, r
+        else:
+            print('QR Householder: something went wrong.')
+            return 
 
-        for i in range(min([r.dimensions[1] - 1, r.dimensions[0]])):
-            if i == 0:
-                q = r.householder_reflection()
-                r = q * r
-            else:
-                m = r.minor(i, i)
-                q_m = m.householder_reflection()
-                q = Matrix.copy(eye)
-                for j in range(r.dimensions[0]-1, r.dimensions[0]-m.dimensions[0]-1, -1):
-                    for k in range(r.dimensions[1]-1, r.dimensions[1]-m.dimensions[1]-1, -1):
-                        q.values[j][k] = q_m.values[j-1][k-1]
-
-                r = q * r
-            
-            q_final = q_final * q.transpose()
-
-        q = Matrix.copy(q_final)
-
-        return q, r
-
-    def svd(self):
-        m = Matrix.copy(self)
-        sigma = Matrix([self.dimensions[0], self.dimensions[1]])
-        l = m * m.transpose()
-        q,t = l.qr_householder()
-
-        r = m.transpose() * m
-
-        q,t = r.qr_householder()
-
-        eigenpairs_u = l.find_eigenpairs()
-        eigenpairs_v = r.find_eigenpairs()
-
-
-        for i in range(min([len(eigenpairs_u), len(eigenpairs_v)])):
-            sigma.values[i][i] = math.sqrt(abs(eigenpairs_v[i][0]))
-
-        u = Matrix.build_from_cols([vec.normalize_vector().get_col(0) for _, vec in eigenpairs_u])
-        v = Matrix.build_from_cols([vec.normalize_vector().get_col(0) for _, vec in eigenpairs_v])
-
-
-
-        return u, sigma, v
 
 def main():
-    pass
+    a = Matrix.generate_dense_square_matrix(3)
+    a = Matrix.build_from_rows([[0,1],[-2,-3]])
+    a = Matrix.build_from_rows([[2.92, 0.86, -1.15], [0.86, 6.51, 3.32], [-1.15, 3.32, 4.57]])
+    print(a.qr_algorithm())
+
+    print(1/(2**0.5), -1/(2**0.5))
+    print(-1/(5**0.5), 2/(5**0.5))
+    
+
 
 if __name__ == "__main__":
     main()

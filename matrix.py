@@ -1,9 +1,11 @@
 from utils import utils, tests
 from operator import itemgetter
+import functools
 import math, random
 
-eps = 7./3 - 4./3 - 1
+eps = 7.0 / 3 - 4.0 / 3 - 1
 thr = 10e-10
+sign = functools.partial(math.copysign, 1)
 
 
 class Matrix(object):
@@ -149,7 +151,7 @@ class Matrix(object):
         matrix = Matrix.copy(self)
         threshold = 0.0001
         if matrix.dimensions[0] == matrix.dimensions[1]:
-            if (matrix.determinant() >= threshold):
+            if matrix.determinant() >= threshold:
                 for i in range(matrix.dimensions[0]):
                     col = []
                     for j in range(matrix.dimensions[0]):
@@ -170,7 +172,7 @@ class Matrix(object):
 
                 return matrix
             else:
-                print('The matrix is singular.')
+                print("The matrix is singular.")
                 return None
         else:
             print("ERROR: Cannot invert a non-square matrix.")
@@ -185,8 +187,7 @@ class Matrix(object):
                     return v
                 else:
                     return u * ((v ** u) / (u ** u))
-        
-    
+
     @staticmethod
     def is_matrix(matrix):
         return isinstance(matrix, Matrix)
@@ -242,7 +243,7 @@ class Matrix(object):
             a = Matrix.copy(self)
             b = Matrix.copy(vector)
             threshold = 0.01
-            if a ** b >= -threshold and a ** b <= threshold:
+            if abs(a**b) < threshold:
                 return True
             else:
                 return False
@@ -317,7 +318,6 @@ class Matrix(object):
     def frobenius_norm(self):
         return math.sqrt((self.transpose() * self).trace())
 
-
     def sort_rows(self):
         matrix = Matrix.copy(self)
         for i in range(matrix.dimensions[0] - 1):
@@ -352,6 +352,14 @@ class Matrix(object):
             for j in range(self.dimensions[1]):
                 values[i].append(0)
         return values
+    
+    @staticmethod
+    def eye(dim):
+        a = Matrix([dim, dim])
+        for i in range(dim):
+            a.values[i][i] = 1
+
+        return a
 
     def identity(self):
         self.zeros()
@@ -373,7 +381,7 @@ class Matrix(object):
                     zero = False
             if zero:
                 zero_rows += 1
-        
+
         return a.dimensions[1] - zero_rows
 
     def swap_rows(self, i, j):
@@ -472,21 +480,16 @@ class Matrix(object):
                 self.values[i].insert(c_index, col[i])
             self.dimensions[1] += 1
 
-    def v_length(vector):
-        if vector.is_vector():
-            v = Matrix.copy(vector)
-            return math.sqrt(v ** v)
-
     def normalize_vector(vector):
         if vector.is_vector():
             v = Matrix.copy(vector)
-            if vector.v_length() > 0:
-                quotient = 1 / vector.v_length()
+            if vector.euclidean_norm() > 0:
+                quotient = 1 / vector.euclidean_norm()
                 return v * quotient
             else:
                 return v
         else:
-            print("ERROR: The given argument is not a matrix.")
+            print("ERROR: The given argument is not a vector.")
 
     @staticmethod
     def copy(matrix):
@@ -598,9 +601,6 @@ class Matrix(object):
         if self.is_symmetric():
             pass
         else:
-            print(
-                "ERROR: Can not do a Cholesky decomposition on a non-symmetric matrix."
-            )
             return None
 
         try:
@@ -631,8 +631,21 @@ class Matrix(object):
             return None
 
     def trace(self):
-        return sum([self.values[i][i] for i in range(min([self.dimensions[0], self.dimensions[1]]))])
+        return sum(
+            [
+                self.values[i][i]
+                for i in range(min([self.dimensions[0], self.dimensions[1]]))
+            ]
+        )
 
+    def insert_matrix(self, m, i, j):
+        a = Matrix.copy(self)
+        
+        if a.dimensions[0] >= m.dimensions[0] + i and a.dimensions[1] >= m.dimensions[1] + j:   
+            for k in range(m.dimensions[0]):
+                for l in range(m.dimensions[1]):
+                    a.values[k+i][l+j] = m.values[k][l]
+        return a
 
     def determinant(self):
         if self.dimensions[0] == self.dimensions[1]:
@@ -660,77 +673,56 @@ class Matrix(object):
             print("ERROR: Can not calculate the determinant of a non-square matrix.")
             return None
 
-    def qr_algorithm(self):
-        a = Matrix.copy(self)
-        q = Matrix([a.dimensions[0], a.dimensions[1]]).identity()
-        q_t = Matrix([a.dimensions[0], a.dimensions[1]]).identity()
+    def householder_reflector(self):
+        if not self.is_vector():
+            print('Householder reflector: the given argument is not a vector.')
+            return
 
-        for i in range(100):
-            q,r = a.qr_householder()
-            a = r * q
-            q_t = q_t * q
+        x = Matrix.copy(self)
 
-        print(q_t)
-        print(a)
+        u = Matrix([x.dimensions[0], 1])
+        u.values[0][0] = sign(x.values[0][0] * 1)
+        u = x + u * x.euclidean_norm()
 
-        eigenpairs = []
+        i = Matrix.eye(x.dimensions[0])
 
-        for i in range(q_t.dimensions[1]):
-            eigenpairs.append((a.values[i][i], Matrix.build_from_cols([q_t.get_col(i)])))
-        
-        eigenpairs = sorted(eigenpairs, key=itemgetter(0), reverse=True)
-    
-            
 
-    def householder_reflection(self, iteration):
-        a = Matrix.copy(self)
-        eye = Matrix([a.dimensions[0], a.dimensions[1]]).identity()
-        c = Matrix.build_from_cols([a.get_col(iteration)])
-        e = Matrix.build_from_cols([[0 for i in range(a.dimensions[0])]])
+        quot_top = u*u.transpose()
+        quot_bot = (u.transpose()*u).values[0][0]
 
-        for i in range(iteration):
-            c.values[i][0] = 0 
+        quot = (quot_top/quot_bot) * 2
 
-        if c.values[iteration][0] >= 0:
-            e.values[iteration][0] = 1
-        else:
-            e.values[iteration][0] = -1
-
-        v = c + (e * c.euclidean_norm())
-
-        h = eye - ((v*v.transpose())*(2/(v**v)))
+        h = i - quot
 
         return h
 
-
-
-    def qr_householder(self):
-        a = Matrix.copy(self)
-        r = Matrix.copy(a)
-        eye = Matrix([a.dimensions[0], a.dimensions[1]]).identity()
-        q = Matrix([a.dimensions[0], a.dimensions[1]]).identity()
-    
-        for i in range(a.dimensions[1]):
-            h = r.householder_reflection(i)
-            q = q * h
-            r = h * r
-    
-        if q*q.transpose() == eye and r.is_upper_triangular():      
-            return q, r
-        else:
-            print('QR Householder: something went wrong.')
+    def upper_hessenberg(self):
+        if not self.is_square():
+            print('Upper Hessenberg: the matrix is not square')
             return 
+
+        a = Matrix.copy(self)
+        eye = Matrix.eye(a.dimensions[0])
+
+        for i in range(a.dimensions[1]-2):
+            v = Matrix.build_from_cols([a.get_col(i)[i+1:]])
+            h = v.householder_reflector()
+            p = eye.insert_matrix(h, eye.dimensions[0]-h.dimensions[0], eye.dimensions[1]-h.dimensions[1])
+            a = p*a*p
+
+        return a
+
+    def inv_linsys_sol(self):
+        a = Matrix.copy(self)
+        b = Matrix.build_from_cols([a.get_col(a.dimensions[1]-1)])
+
+        a.delete_col(a.dimensions[1]-1)
+
+        return (~a * b)
 
 
 def main():
-    a = Matrix.generate_dense_square_matrix(3)
-    a = Matrix.build_from_rows([[0,1],[-2,-3]])
-    a = Matrix.build_from_rows([[2.92, 0.86, -1.15], [0.86, 6.51, 3.32], [-1.15, 3.32, 4.57]])
-    print(a.qr_algorithm())
-
-    print(1/(2**0.5), -1/(2**0.5))
-    print(-1/(5**0.5), 2/(5**0.5))
-    
+    pass
 
 
 if __name__ == "__main__":

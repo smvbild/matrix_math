@@ -249,11 +249,12 @@ class Matrix(object):
                 return False
 
     def is_upper_triangular(self):
+        threshold = 0.001
         if not (self.is_square()):
             return False
         for i in range(self.dimensions[0]):
             for j in range(self.dimensions[1]):
-                if i > j and abs(self.values[i][j]) > thr:
+                if i > j and abs(self.values[i][j]) > threshold:
                     return False
         return True
 
@@ -395,8 +396,10 @@ class Matrix(object):
 
     def minor(self, i, j):
         minor = Matrix.copy(self)
-        minor.delete_row(i - 1)
-        minor.delete_col(j - 1)
+        if i > 0:
+            minor.delete_row(i - 1)
+        if j > 0:
+            minor.delete_col(j - 1)
         return minor
 
     def add_row_to_row(self, r_index, row):
@@ -679,22 +682,40 @@ class Matrix(object):
             return
 
         x = Matrix.copy(self)
+        alpha = x.euclidean_norm()
+        e = Matrix.build_from_cols([[0 for i in range(x.dimensions[0])]])
+        e.values[0][0] = 1 * sign(x.values[0][0])
 
-        u = Matrix([x.dimensions[0], 1])
-        u.values[0][0] = sign(x.values[0][0] * 1)
-        u = x + u * x.euclidean_norm()
+        u = x - e * alpha
 
+        v = u.normalize_vector()
+    
         i = Matrix.eye(x.dimensions[0])
 
-
-        quot_top = u*u.transpose()
-        quot_bot = (u.transpose()*u).values[0][0]
-
-        quot = (quot_top/quot_bot) * 2
-
-        h = i - quot
+        h = i - (v*v.transpose()) * 2
 
         return h
+
+    def qr_decomposition(self):
+        a = Matrix.copy(self)
+        q = Matrix.eye(a.dimensions[0])
+        r = Matrix.eye(a.dimensions[0])
+
+        for i in range(a.dimensions[1]-1):
+            minor = Matrix.copy(a)
+            for j in range(i):
+                minor = minor.minor(1,1)
+
+            col_vector = Matrix.build_from_cols([minor.get_col(0)])
+            h = col_vector.householder_reflector()
+            eye = Matrix.eye(a.dimensions[0])
+            h = eye.insert_matrix(h, eye.dimensions[0]-h.dimensions[0], eye.dimensions[1]-h.dimensions[1])
+            q = q * h.transpose()
+            a = h * a
+
+        r = Matrix.copy(a)
+
+        return q, r
 
     def upper_hessenberg(self):
         if not self.is_square():
@@ -720,10 +741,31 @@ class Matrix(object):
 
         return (~a * b)
 
+    def qr_algorithm(self):
+
+        a = Matrix.copy(self)
+        q_total = Matrix.eye(a.dimensions[0])
+        completed = False
+
+        for i in range(1000):
+            a_prev = Matrix.copy(a)
+            q,r = a.qr_decomposition()
+            a = r * q
+            q_total = q_total * q
+
+        if a.is_upper_triangular():
+            print('#'*100)
+            print(self)
+            print(q_total)
+            [print(a.values[i][i]) for i in range(a.dimensions[0])]
+            print(sum([a.values[i][i] for i in range(a.dimensions[0])]) == self.trace())
+            print(functools.reduce(lambda x, y: x*y, [a.values[i][i] for i in range(a.dimensions[0])]) == self.determinant())
+
+
 
 def main():
-    pass
-
+    a = Matrix.generate_sparse_square_matrix(3)
+    a.qr_algorithm()
 
 if __name__ == "__main__":
     main()
